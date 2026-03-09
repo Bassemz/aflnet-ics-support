@@ -1266,67 +1266,54 @@ region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsign
   *region_count_ref = region_count;
   return regions;
 }
-unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
-{
-  char *mem;
-  unsigned int byte_count = 0;
-  unsigned int mem_count = 0;
-  unsigned int mem_size = 1024;
-  unsigned int *state_sequence = NULL;
-  unsigned int state_count = 0;
-  char terminator_one[1] = {0x00};
-  char terminator_two[1] = {0x03};
+region_t* extract_requests_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+  unsigned int cur_start = 0;
 
-  mem=(char *)ck_alloc(mem_size);
-
-  state_count++;
-  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-  state_sequence[state_count - 1] = 0;
-
-  while (byte_count < buf_size) {
-    memcpy(&mem[mem_count], buf + byte_count++, 1);
-
-    if ((mem_count > 0) && ((memcmp(&mem[mem_count - 1], terminator_one, 1) == 0) || (memcmp(&mem[mem_count - 1], terminator_two, 1) == 0))) {
-      //Extract the response code which is the first 4 bytes
-      char temp[5];
-      memcpy(temp, mem, 5);
-      temp[4] = 0x0;
-      unsigned int message_code = (unsigned int) atoi(temp);
-
-      if (message_code == 0) break;
-
-      message_code = get_mapped_message_code(message_code);
-
-      state_count++;
-      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-      state_sequence[state_count - 1] = message_code;
-      mem_count = 0;
-    } else if (byte_count == buf_size){
-      char temp[5];
-      memcpy(temp, mem, 5);
-      temp[4] = 0x0;
-      unsigned int message_code = (unsigned int) atoi(temp);
-      if (message_code == 0) break;
-
-      message_code = get_mapped_message_code(message_code);
-
-      state_count++;
-      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-      state_sequence[state_count - 1] = message_code;
-      //mem_count = 0;
-      break;
-    }else{
-      mem_count++;
-      if (mem_count == mem_size) {
-        //enlarge the mem buffer
-        mem_size = mem_size * 2;
-        mem=(char *)ck_realloc(mem, mem_size);
-      }
+  while (cur_start < buf_size) {
+    // 1. A valid Modbus TCP ADU must be at least 8 bytes (7 MBAP + 1 Function Code)
+    if (buf_size - cur_start < 8) {
+      break; 
     }
+
+    // 2. Extract Length field
+    unsigned int len_field = (buf[cur_start + 4] << 8) | buf[cur_start + 5];
+    unsigned int packet_len = 6 + len_field;
+
+    // 3. Fuzzer-Safe Fallback: If length is mutated to be impossibly small
+    if (len_field < 2) {
+        packet_len = 8; // Force a minimum step forward to prevent infinite loops
+    }
+
+    // 4. Boundary check to prevent buffer overflow
+    if (cur_start + packet_len > buf_size) {
+      packet_len = buf_size - cur_start;
+    }
+
+    // 5. Register the region
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = cur_start;
+    regions[region_count - 1].end_byte = cur_start + packet_len - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    cur_start += packet_len;
   }
-  if (mem) ck_free(mem);
-  *state_count_ref = state_count;
-  return state_sequence;
+
+  // 6. Failsafe for broken structures
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+    region_count = 1;
+  }
+
+  *region_count_ref = region_count;
+  return regions;
 }
 
 unsigned int* extract_response_codes_dhcp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
@@ -2403,6 +2390,51 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
   }
 
   if (mem) ck_free(mem);
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
+unsigned int* extract_response_codes_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) {
+  unsigned int state_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int cur_start = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 8) {
+      break; 
+    }
+
+    unsigned int len_field = (buf[cur_start + 4] << 8) | buf[cur_start + 5];
+    unsigned int packet_len = 6 + len_field;
+    unsigned int state_id;
+
+    if (len_field < 2) {
+        // Fuzzer-Safe Fallback: Assign a custom error state (255) for malformed lengths
+        state_id = 255;
+        packet_len = 8; 
+    } else {
+        unsigned int function_code = buf[cur_start + 7];
+        state_id = function_code;
+
+        // Granular State Tracking: If it's an error (FC >= 128), grab the exception code too
+        if (function_code >= 0x80 && (buf_size - cur_start >= 9)) {
+            unsigned int exception_code = buf[cur_start + 8];
+            // Combine them into a single unique state ID (e.g., 0x8102)
+            state_id = (function_code << 8) | exception_code;
+        }
+    }
+
+    if (cur_start + packet_len > buf_size) {
+      packet_len = buf_size - cur_start;
+    }
+
+    state_count++;
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = state_id;
+
+    cur_start += packet_len;
+  }
+
   *state_count_ref = state_count;
   return state_sequence;
 }
