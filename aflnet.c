@@ -1315,6 +1315,68 @@ region_t* extract_requests_modbus(unsigned char* buf, unsigned int buf_size, uns
   *region_count_ref = region_count;
   return regions;
 }
+unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+  char *mem;
+  unsigned int byte_count = 0;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  char terminator_one[1] = {0x00};
+  char terminator_two[1] = {0x03};
+
+  mem=(char *)ck_alloc(mem_size);
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (byte_count < buf_size) {
+    memcpy(&mem[mem_count], buf + byte_count++, 1);
+
+    if ((mem_count > 0) && ((memcmp(&mem[mem_count - 1], terminator_one, 1) == 0) || (memcmp(&mem[mem_count - 1], terminator_two, 1) == 0))) {
+      //Extract the response code which is the first 4 bytes
+      char temp[5];
+      memcpy(temp, mem, 5);
+      temp[4] = 0x0;
+      unsigned int message_code = (unsigned int) atoi(temp);
+
+      if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
+
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = message_code;
+      mem_count = 0;
+    } else if (byte_count == buf_size){
+      char temp[5];
+      memcpy(temp, mem, 5);
+      temp[4] = 0x0;
+      unsigned int message_code = (unsigned int) atoi(temp);
+      if (message_code == 0) break;
+
+      message_code = get_mapped_message_code(message_code);
+
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = message_code;
+      //mem_count = 0;
+      break;
+    }else{
+      mem_count++;
+      if (mem_count == mem_size) {
+        //enlarge the mem buffer
+        mem_size = mem_size * 2;
+        mem=(char *)ck_realloc(mem, mem_size);
+      }
+    }
+  }
+  if (mem) ck_free(mem);
+  *state_count_ref = state_count;
+  return state_sequence;
+}
 
 unsigned int* extract_response_codes_dhcp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
