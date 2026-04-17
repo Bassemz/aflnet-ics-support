@@ -2461,6 +2461,10 @@ unsigned int* extract_response_codes_modbus(unsigned char* buf, unsigned int buf
   unsigned int *state_sequence = NULL;
   unsigned int cur_start = 0;
 
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
   while (cur_start < buf_size) {
     if (buf_size - cur_start < 8) {
       break; 
