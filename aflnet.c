@@ -1315,6 +1315,118 @@ region_t* extract_requests_modbus(unsigned char* buf, unsigned int buf_size, uns
   *region_count_ref = region_count;
   return regions;
 }
+
+region_t* extract_requests_snap7(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+  unsigned int cur_start = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 4) break;
+    if (buf[cur_start] != 0x03 || buf[cur_start+1] != 0x00) {
+      cur_start++;
+      continue;
+    }
+    unsigned int packet_len = (buf[cur_start+2] << 8) | buf[cur_start+3];
+    if (packet_len < 4) packet_len = 4;
+    
+    if (cur_start + packet_len > buf_size) packet_len = buf_size - cur_start;
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = cur_start;
+    regions[region_count - 1].end_byte = cur_start + packet_len - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    cur_start += packet_len;
+  }
+  
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+    region_count = 1;
+  }
+  *region_count_ref = region_count;
+  return regions;
+}
+
+region_t* extract_requests_dnp3(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+  unsigned int cur_start = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 10) break;
+    if (buf[cur_start] != 0x05 || buf[cur_start+1] != 0x64) {
+      cur_start++;
+      continue;
+    }
+    unsigned int len = buf[cur_start+2];
+    if (len < 5) len = 5;
+    unsigned int packet_len = 5 + len + 2 * ((len + 10) / 16);
+    
+    if (cur_start + packet_len > buf_size) packet_len = buf_size - cur_start;
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = cur_start;
+    regions[region_count - 1].end_byte = cur_start + packet_len - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    cur_start += packet_len;
+  }
+  
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+    region_count = 1;
+  }
+  *region_count_ref = region_count;
+  return regions;
+}
+
+region_t* extract_requests_enip(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref) {
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+  unsigned int cur_start = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 24) break;
+    unsigned int data_len = buf[cur_start+2] | (buf[cur_start+3] << 8);
+    unsigned int packet_len = 24 + data_len;
+    
+    if (cur_start + packet_len > buf_size) packet_len = buf_size - cur_start;
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = cur_start;
+    regions[region_count - 1].end_byte = cur_start + packet_len - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    cur_start += packet_len;
+  }
+  
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+    region_count = 1;
+  }
+  *region_count_ref = region_count;
+  return regions;
+}
+
 unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -2501,6 +2613,123 @@ unsigned int* extract_response_codes_modbus(unsigned char* buf, unsigned int buf
     cur_start += packet_len;
   }
 
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
+
+unsigned int* extract_response_codes_snap7(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) {
+  unsigned int state_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int cur_start = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 4) break;
+    if (buf[cur_start] != 0x03 || buf[cur_start+1] != 0x00) {
+      cur_start++;
+      continue;
+    }
+    unsigned int packet_len = (buf[cur_start+2] << 8) | buf[cur_start+3];
+    if (packet_len < 4) packet_len = 4;
+    
+    unsigned int state_id = 255;
+    if (buf_size - cur_start >= 8) {
+      unsigned int cotp_len = buf[cur_start+4];
+      unsigned int s7_start = cur_start + 4 + cotp_len + 1;
+      if (buf_size > s7_start + 1 && buf[s7_start] == 0x32) {
+         unsigned int msg_type = buf[s7_start+1];
+         state_id = msg_type;
+         if (buf_size > s7_start + 10) {
+             unsigned int param_start = s7_start + 10;
+             if (msg_type == 2 || msg_type == 3) {
+                 if (buf_size > param_start) {
+                     unsigned int func_code = buf[param_start];
+                     state_id = (msg_type << 8) | func_code;
+                 }
+             }
+         }
+      }
+    }
+
+    state_count++;
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = state_id;
+
+    if (cur_start + packet_len > buf_size) packet_len = buf_size - cur_start;
+    cur_start += packet_len;
+  }
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
+unsigned int* extract_response_codes_dnp3(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) {
+  unsigned int state_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int cur_start = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 10) break;
+    if (buf[cur_start] != 0x05 || buf[cur_start+1] != 0x64) {
+      cur_start++;
+      continue;
+    }
+    unsigned int len = buf[cur_start+2];
+    if (len < 5) len = 5;
+    unsigned int packet_len = 5 + len + 2 * ((len + 10) / 16);
+    
+    unsigned int state_id = 255;
+    if (len >= 8 && buf_size - cur_start >= 13) {
+      state_id = buf[cur_start+12];
+      if (buf_size - cur_start >= 15) {
+         unsigned int iin = (buf[cur_start+13] << 8) | buf[cur_start+14];
+         state_id = (state_id << 16) | iin;
+      }
+    }
+
+    state_count++;
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = state_id;
+
+    if (cur_start + packet_len > buf_size) packet_len = buf_size - cur_start;
+    cur_start += packet_len;
+  }
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
+unsigned int* extract_response_codes_enip(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref) {
+  unsigned int state_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int cur_start = 0;
+
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (cur_start < buf_size) {
+    if (buf_size - cur_start < 24) break;
+    unsigned int command = buf[cur_start] | (buf[cur_start+1] << 8);
+    unsigned int data_len = buf[cur_start+2] | (buf[cur_start+3] << 8);
+    unsigned int status = buf[cur_start+8] | (buf[cur_start+9] << 8) | (buf[cur_start+10] << 16) | (buf[cur_start+11] << 24);
+    unsigned int packet_len = 24 + data_len;
+
+    unsigned int state_id = (command << 16) | (status & 0xFFFF);
+    
+    state_count++;
+    state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+    state_sequence[state_count - 1] = state_id;
+
+    if (cur_start + packet_len > buf_size) packet_len = buf_size - cur_start;
+    cur_start += packet_len;
+  }
   *state_count_ref = state_count;
   return state_sequence;
 }

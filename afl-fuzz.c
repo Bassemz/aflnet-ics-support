@@ -9097,6 +9097,15 @@ int main(int argc, char** argv) {
         }else if(!strcmp(optarg, "modbus")) {
           extract_requests = &extract_requests_modbus;
           extract_response_codes = &extract_response_codes_modbus;
+        }else if(!strcmp(optarg, "snap7") || !strcmp(optarg, "s7")) {
+          extract_requests = &extract_requests_snap7;
+          extract_response_codes = &extract_response_codes_snap7;
+        }else if(!strcmp(optarg, "dnp3")) {
+          extract_requests = &extract_requests_dnp3;
+          extract_response_codes = &extract_response_codes_dnp3;
+        }else if(!strcmp(optarg, "enip")) {
+          extract_requests = &extract_requests_enip;
+          extract_response_codes = &extract_response_codes_enip;
         } else {
           FATAL("%s protocol is not supported yet!", optarg);
         }

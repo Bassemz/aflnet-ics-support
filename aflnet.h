@@ -93,6 +93,9 @@ unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_s
 unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_snap7(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_dnp3(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_enip(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 extern unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 
 region_t* extract_requests_smtp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
@@ -113,6 +116,9 @@ region_t* extract_requests_SNTP(unsigned char* buf, unsigned int buf_size, unsig
 region_t* extract_requests_NTP(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_SNMP(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_modbus(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+region_t* extract_requests_snap7(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+region_t* extract_requests_dnp3(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+region_t* extract_requests_enip(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 extern region_t* (*extract_requests)(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 
 // Network communication functions
